@@ -1,5 +1,5 @@
 from flask import Flask, request, Response
-from datetime import datetime
+import re
 
 app = Flask(__name__)
 
@@ -12,16 +12,16 @@ CARD_ID = 321
 
 @app.route('/exotel-message', methods=['GET'])
 def get_message():
-    phone = request.args.get('From')
+    phone = request.args.get('From').strip()
 
     if not phone:
         default_msg = "Hello, this is a reminder regarding your scheduled hearing. Please attend without fail."
         return Response(default_msg, mimetype='text/plain')
 
     # Clean phone number
-    phone = phone.strip().lstrip('+')
-    if phone.startswith('91') and len(phone) > 10:
-        phone = phone[2:]  # Keep only 10 digits
+    phone = re.sub(r'\D', '', phone)
+    if len(phone) == 12 and phone.startswith('91'):
+        phone = phone[2:]
 
     # Lazy load: Import and connect to Metabase ONLY when needed
     try:
@@ -38,24 +38,22 @@ def get_message():
 
         results = mb.get_card_data(card_id=CARD_ID, data_format='json', parameters=parameters)
     except Exception as e:
-        print(f"Metabase error: {e}")
-        results = []
+        return Response(
+            f"Metabase error: {e}",
+            status=500,
+            mimetype='text/plain'
+        )
 
     # Build message
     if results and len(results) > 0:
         row = results[0]
-        name = row.get('respondent_name', 'there').strip()
+        name = (row.get('respondent_name') or 'there').strip()
         contract_id = row.get('contract_id', 'your case')
         org = row.get('org_name', 'the concerned organization')
         client = row.get('client', 'online')
         meeting = row.get('meeting_type', 'hearing')
 
-        try:
-            event_raw = row['event_time'].split('.')[0]
-            event_dt = datetime.strptime(event_raw, '%Y-%m-%d %H:%M:%S')
-            event_text = event_dt.strftime('%d %B %Y at %I:%M %p').lstrip('0').replace(' 0', ' ')
-        except:
-            event_text = 'tomorrow'
+        event_text = row.get('event_time', 'tomorrow')
 
         message = (
             "Welcome to CADRE ODR, India's Simplest Online Dispute Resolution Platform. "
