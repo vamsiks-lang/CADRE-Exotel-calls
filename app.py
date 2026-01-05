@@ -1,60 +1,75 @@
-from flask import Flask, request
-from metabase_api import Metabase_API
+from flask import Flask, request, Response
+# Remove the global mb creation
+# from metabase_api import Metabase_API   # Keep the import, but don't create mb here
 from datetime import datetime
 
 app = Flask(__name__)
 
-# Your Metabase details
+# Your Metabase details (keep them here)
 METABASE_URL = 'https://metabase.cadreodr.com'
 METABASE_USERNAME = 'vamsi.ks@thecadre.in'
 METABASE_PASSWORD = 'Universe123@#'
-CARD_ID = 321  # Your saved card
+CARD_ID = 321
 
-mb = Metabase_API(METABASE_URL, email=METABASE_USERNAME, password=METABASE_PASSWORD)
 
-@app.route('/exotel-message')
+@app.route('/exotel-message', methods=['GET'])
 def get_message():
-    phone = request.args.get('From')  # Phone from Exotel (clean it if needed)
-    if phone.startswith('91'):
-        phone = phone[2:]  # Remove country code for query if your DB stores 10 digits
+    phone = request.args.get('From')
 
-    # Run Metabase query with phone parameter
-    parameters = [
-        {
-            "type": "text",
-            "target": ["variable", ["template-tag", "phone"]],
-            "value": phone
-        }
-    ]
-    results = mb.get_card_data(card_id=CARD_ID, data_format='json', parameters=parameters)
+    if not phone:
+        default_msg = "Hello, this is a reminder regarding your scheduled hearing. Please attend without fail."
+        return Response(default_msg, mimetype='text/plain')
 
+    # Clean phone
+    phone = phone.strip().lstrip('+')
+    if phone.startswith('91') and len(phone) > 10:
+        phone = phone[2:]
+
+    # NOW create Metabase connection ONLY here (lazy)
+    try:
+        from metabase_api import Metabase_API
+        mb = Metabase_API(METABASE_URL, email=METABASE_USERNAME, password=METABASE_PASSWORD)
+
+        parameters = [
+            {"type": "text", "target": ["variable", ["template-tag", "phone"]], "value": phone}
+        ]
+
+        results = mb.get_card_data(card_id=CARD_ID, data_format='json', parameters=parameters)
+    except Exception as e:
+        print(f"Metabase connection/query error: {e}")
+        results = []
+
+    # Rest of your code (same as before)
     if results and len(results) > 0:
         row = results[0]
-        name = row.get('respondent_name', 'There')
-        contract_id = row.get('contract_id')
+        name = row.get('respondent_name', 'there').strip()
+        contract_id = row.get('contract_id', 'your case')
         org = row.get('org_name', 'the concerned organization')
-        client = row.get('client','online')
+        client = row.get('client', 'online')
         meeting = row.get('meeting_type', 'hearing')
+
         try:
             event_raw = row['event_time'].split('.')[0]
             event_dt = datetime.strptime(event_raw, '%Y-%m-%d %H:%M:%S')
-            event_text = event_dt.strftime('%d %B %Y at %I:%M %p').lstrip('0')
+            event_text = event_dt.strftime('%d %B %Y at %I:%M %p').lstrip('0').replace(' 0', ' ')
         except:
             event_text = 'tomorrow'
 
-        # Build your exact dynamic sentence
-        message = (f"Welcome to KADER ODR .............India's Simplest Online"
-                   f" Dispute Resolution Platform.............."
-                   f"Hello {name}, this is a reminder from CADRE ODR regarding your case {contract_id} "
-                   f"for the organization {org}"
-                   f"your {meeting} is scheduled on {event_text} on {client} platform."
-                   f"Link regarding this case has already been shared to you via digital modes"
-                   f"Kindly Attend the Meeting.")
+        message = (
+            "Welcome to CADRE ODR, India's Simplest Online Dispute Resolution Platform. "
+            f"Hello {name}, this is a reminder regarding your case {contract_id} with {org}. "
+            f"Your {meeting} is scheduled on {event_text} on the {client} platform."
+            f"Information regarding this has already been sent to you via digital modes."
+            "Kindly attend the meeting without fail. Thank you."
+        )
     else:
-        message = ("Hello, this is a reminder regarding your scheduled hearing tomorrow. Kindly Attend the meeting without fail.")
+        message = (
+            "Hello, this is an automated reminder from CADRE ODR "
+            "regarding your upcoming scheduled hearing. "
+            "Please ensure you attend the meeting without fail. Thank you."
+        )
 
-    return message  # Exotel gets this text and speaks it
-
+    return Response(message, mimetype='text/plain')
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
