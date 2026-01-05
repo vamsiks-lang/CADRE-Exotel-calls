@@ -52,7 +52,6 @@ def get_message():
         org = row.get('org_name', 'the concerned organization')
         client = row.get('client', 'online')
         meeting = row.get('meeting_type', 'hearing')
-
         event_text = row.get('event_time', 'tomorrow')
 
         message = (
