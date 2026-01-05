@@ -1,16 +1,14 @@
 from flask import Flask, request, Response
-# Remove the global mb creation
-# from metabase_api import Metabase_API   # Keep the import, but don't create mb here
 from datetime import datetime
 
 app = Flask(__name__)
 
-# Your Metabase details (keep them here)
+# === YOUR REAL METABASE DETAILS HERE ===
 METABASE_URL = 'https://metabase.cadreodr.com'
 METABASE_USERNAME = 'vamsi.ks@thecadre.in'
-METABASE_PASSWORD = 'Universe123@#'
+METABASE_PASSWORD = 'Universe123@#'  # Your actual password
 CARD_ID = 321
-
+# ======================================
 
 @app.route('/exotel-message', methods=['GET'])
 def get_message():
@@ -20,26 +18,30 @@ def get_message():
         default_msg = "Hello, this is a reminder regarding your scheduled hearing. Please attend without fail."
         return Response(default_msg, mimetype='text/plain')
 
-    # Clean phone
+    # Clean phone number
     phone = phone.strip().lstrip('+')
     if phone.startswith('91') and len(phone) > 10:
-        phone = phone[2:]
+        phone = phone[2:]  # Keep only 10 digits
 
-    # NOW create Metabase connection ONLY here (lazy)
+    # Lazy load: Import and connect to Metabase ONLY when needed
     try:
         from metabase_api import Metabase_API
         mb = Metabase_API(METABASE_URL, email=METABASE_USERNAME, password=METABASE_PASSWORD)
 
         parameters = [
-            {"type": "text", "target": ["variable", ["template-tag", "phone"]], "value": phone}
+            {
+                "type": "text",
+                "target": ["variable", ["template-tag", "phone"]],
+                "value": phone
+            }
         ]
 
         results = mb.get_card_data(card_id=CARD_ID, data_format='json', parameters=parameters)
     except Exception as e:
-        print(f"Metabase connection/query error: {e}")
+        print(f"Metabase error: {e}")
         results = []
 
-    # Rest of your code (same as before)
+    # Build message
     if results and len(results) > 0:
         row = results[0]
         name = row.get('respondent_name', 'there').strip()
@@ -58,8 +60,8 @@ def get_message():
         message = (
             "Welcome to CADRE ODR, India's Simplest Online Dispute Resolution Platform. "
             f"Hello {name}, this is a reminder regarding your case {contract_id} with {org}. "
-            f"Your {meeting} is scheduled on {event_text} on the {client} platform."
-            f"Information regarding this has already been sent to you via digital modes."
+            f"Your {meeting} is scheduled on {event_text} on the {client} platform. "
+            "Information regarding this has already been sent to you via digital modes. "
             "Kindly attend the meeting without fail. Thank you."
         )
     else:
